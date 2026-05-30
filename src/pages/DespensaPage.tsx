@@ -16,6 +16,7 @@ import {
 } from '../components/stock/ProductStatusBadge'
 import { StockFilters } from '../components/stock/StockFilters'
 import { StockTable } from '../components/stock/StockTable'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { useEanScanner } from '../hooks/useEanScanner'
 import { useVoiceSearch } from '../hooks/useVoiceSearch'
 import type { Wine as WineType } from '../types/wine'
@@ -476,13 +477,17 @@ export function DespensaPage() {
             </p>
           </div>
         </div>
-        <Link
-          to="/adega"
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass sm:min-h-11 sm:px-4 sm:text-sm"
-        >
-          <ArrowLeft size={17} aria-hidden="true" />
-          Voltar para Adega
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
+          <Link
+            to="/adega"
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass sm:min-h-11 sm:px-4 sm:text-sm"
+          >
+            <ArrowLeft size={17} aria-hidden="true" />
+            <span className="hidden sm:inline">Voltar para Adega</span>
+            <span className="sm:hidden">Adega</span>
+          </Link>
+        </div>
       </header>
 
       {notice ? (

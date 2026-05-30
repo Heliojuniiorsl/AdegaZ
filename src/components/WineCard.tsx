@@ -14,7 +14,7 @@ function CardImage({ src, alt }: { src?: string; alt: string }) {
 
   if (!src || failed) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-md bg-gradient-to-b from-garnet/25 to-graphite text-brass">
+      <div className="flex h-full w-full items-center justify-center rounded-md bg-white text-brass">
         <Wine size={48} strokeWidth={1.4} aria-hidden="true" />
       </div>
     )
@@ -24,7 +24,7 @@ function CardImage({ src, alt }: { src?: string; alt: string }) {
     <img
       src={src}
       alt={alt}
-      className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
+      className="wine-card-image h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
       loading="lazy"
       onError={() => setFailedSrc(src)}
     />
@@ -59,7 +59,7 @@ export function WineCard({ wine, onSelect }: WineCardProps) {
       onClick={onSelect}
       className="group flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-white/[0.055] p-4 text-left shadow-cellar transition duration-300 hover:-translate-y-1 hover:border-brass/45 hover:bg-white/[0.085] focus:outline-none focus:ring-2 focus:ring-brass/70"
     >
-      <div className="mb-4 aspect-[4/5] w-full min-w-0 overflow-hidden rounded-md bg-graphite/70 p-4">
+      <div className="mb-4 aspect-[4/5] w-full min-w-0 overflow-hidden rounded-md bg-white p-4">
         <CardImage src={imagem} alt={nome} />
       </div>
 

@@ -8,7 +8,7 @@ type ImageGalleryProps = {
 
 function BottlePlaceholder() {
   return (
-    <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-4 rounded-lg border border-brass/20 bg-gradient-to-b from-white/[0.08] to-white/[0.03] text-brass">
+    <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-4 rounded-lg border border-brass/20 bg-white text-brass">
       <Wine size={64} strokeWidth={1.4} aria-hidden="true" />
       <span className="text-sm font-medium text-stone-300">Imagem indisponível</span>
     </div>
@@ -28,12 +28,12 @@ export function ImageGallery({ images, alt }: ImageGalleryProps) {
 
   return (
     <section className="animate-fade-in">
-      <div className="aspect-[4/5] overflow-hidden rounded-lg border border-white/10 bg-white/[0.05] p-5 shadow-cellar">
+      <div className="aspect-[4/5] overflow-hidden rounded-lg border border-white/10 bg-white p-5 shadow-cellar">
         {hasImage ? (
           <img
             src={selectedImage}
             alt={alt}
-            className="h-full w-full object-contain drop-shadow-2xl"
+            className="wine-gallery-image h-full w-full object-contain"
             onError={() => setFailedImage(selectedImage)}
           />
         ) : (
@@ -55,7 +55,7 @@ export function ImageGallery({ images, alt }: ImageGalleryProps) {
                   setChosenImage(image)
                   setFailedImage(null)
                 }}
-                className={`aspect-square overflow-hidden rounded-md border bg-white/[0.06] p-2 transition duration-200 ${
+                className={`aspect-square overflow-hidden rounded-md border bg-white p-2 transition duration-200 ${
                   selected
                     ? 'border-brass shadow-glow'
                     : 'border-white/10 hover:border-brass/50'

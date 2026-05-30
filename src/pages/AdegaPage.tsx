@@ -10,6 +10,7 @@ import { FilterButton } from '../components/FilterButton'
 import { FilterModal } from '../components/FilterModal'
 import { ResultCounter } from '../components/ResultCounter'
 import { SearchBar } from '../components/SearchBar'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { WineCard } from '../components/WineCard'
 import { WineDetails } from '../components/WineDetails'
 import { useEanScanner } from '../hooks/useEanScanner'
@@ -229,13 +230,16 @@ export function AdegaPage() {
               <p className="text-xs text-stone-400">Consulta premium de vinhos</p>
             </div>
           </div>
-          <Link
-            to="/despensa"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass"
-          >
-            <PackageSearch size={17} aria-hidden="true" />
-            Despensa
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <Link
+              to="/despensa"
+              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass"
+            >
+              <PackageSearch size={17} aria-hidden="true" />
+              Despensa
+            </Link>
+          </div>
         </header>
         <WineDetails wine={selectedWine} onBack={() => setSelectedWine(null)} />
       </div>
@@ -253,13 +257,16 @@ export function AdegaPage() {
             <p className="truncate text-lg font-semibold text-ivory">Adega Inteligente</p>
           </div>
         </div>
-        <Link
-          to="/despensa"
-          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass"
-        >
-          <PackageSearch size={17} aria-hidden="true" />
-          Despensa
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
+          <Link
+            to="/despensa"
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass"
+          >
+            <PackageSearch size={17} aria-hidden="true" />
+            Despensa
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto mt-14 w-full max-w-7xl min-w-0">

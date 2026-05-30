@@ -1,6 +1,7 @@
 import { ArrowRight, BottleWine, PackageSearch } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 type HomeCardProps = {
   to: string
@@ -31,6 +32,9 @@ function HomeCard({ to, title, description, icon }: HomeCardProps) {
 export function HomePage() {
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-hidden px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-5xl justify-end">
+        <ThemeToggle />
+      </div>
       <section className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl flex-col justify-center">
         <div className="max-w-3xl">
           <p className="mb-4 inline-flex rounded-full border border-brass/25 bg-brass/10 px-3 py-1 text-xs font-semibold uppercase text-brass">

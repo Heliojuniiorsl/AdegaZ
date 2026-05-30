@@ -15,7 +15,11 @@ function getInitialTheme(): Theme {
   return savedTheme === 'light' ? 'light' : 'dark'
 }
 
-export function ThemeToggle() {
+type ThemeToggleProps = {
+  className?: string
+}
+
+export function ThemeToggle({ className = '' }: ThemeToggleProps) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
 
   useEffect(() => {
@@ -26,35 +30,55 @@ export function ThemeToggle() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 inline-flex rounded-lg border border-white/10 bg-graphite/80 p-1 shadow-cellar backdrop-blur"
+      className={`relative inline-grid h-11 w-[5.75rem] shrink-0 grid-cols-2 gap-1 overflow-hidden rounded-full border border-white/10 bg-graphite/80 p-1 shadow-cellar backdrop-blur transition duration-500 ${className}`}
       role="group"
       aria-label="Selecionar tema"
     >
+      <span
+        aria-hidden="true"
+        className={`absolute left-1 top-1 h-9 w-10 rounded-full bg-brass shadow-[0_0_24px_rgba(214,169,79,0.36)] transition-transform duration-500 ease-out ${
+          theme === 'dark' ? 'translate-x-11' : 'translate-x-0'
+        }`}
+      />
       <button
         type="button"
         onClick={() => setTheme('light')}
         aria-pressed={theme === 'light'}
-        className={`inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-bold transition duration-200 ${
+        aria-label="Ativar tema claro"
+        title="Ativar tema claro"
+        className={`relative z-10 inline-flex h-9 w-10 items-center justify-center rounded-full transition duration-500 ${
           theme === 'light'
-            ? 'bg-brass text-graphite'
-            : 'text-stone-300 hover:bg-white/[0.08] hover:text-brass'
+            ? 'scale-105 text-graphite'
+            : 'text-stone-300 hover:text-brass'
         }`}
       >
-        <Sun size={16} aria-hidden="true" />
-        Claro
+        <Sun
+          size={17}
+          aria-hidden="true"
+          className={`transition duration-500 ${
+            theme === 'light' ? 'rotate-0 scale-110' : '-rotate-45 scale-90'
+          }`}
+        />
       </button>
       <button
         type="button"
         onClick={() => setTheme('dark')}
         aria-pressed={theme === 'dark'}
-        className={`inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-bold transition duration-200 ${
+        aria-label="Ativar tema escuro"
+        title="Ativar tema escuro"
+        className={`relative z-10 inline-flex h-9 w-10 items-center justify-center rounded-full transition duration-500 ${
           theme === 'dark'
-            ? 'bg-brass text-graphite'
-            : 'text-stone-300 hover:bg-white/[0.08] hover:text-brass'
+            ? 'scale-105 text-graphite'
+            : 'text-stone-300 hover:text-brass'
         }`}
       >
-        <Moon size={16} aria-hidden="true" />
-        Escuro
+        <Moon
+          size={17}
+          aria-hidden="true"
+          className={`transition duration-500 ${
+            theme === 'dark' ? 'rotate-0 scale-110' : 'rotate-45 scale-90'
+          }`}
+        />
       </button>
     </div>
   )
