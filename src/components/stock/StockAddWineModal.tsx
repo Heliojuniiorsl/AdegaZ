@@ -13,7 +13,7 @@ import {
   carregarVinculosEAN,
   normalizarEAN,
 } from '../../utils/eanUtils'
-import { getCampoSeguro, normalizarTexto } from '../../utils/wineUtils'
+import { buscarVinhos, getCampoSeguro, normalizarTexto } from '../../utils/wineUtils'
 
 export type AddWineToStockData = {
   wine?: WineType
@@ -91,6 +91,78 @@ function getWineImage(wine?: WineType) {
   return getCampoSeguro(wine?.imagem_principal, { maxLength: 600 })
 }
 
+function getWineSuggestionKey(wine: WineType) {
+  return getWineCode(wine) || normalizarTexto(getWineName(wine))
+}
+
+function pontuarSugestaoPorNome(wine: WineType, query: string) {
+  const normalizedQuery = normalizarTexto(query)
+  const normalizedName = normalizarTexto(getWineName(wine))
+  const tokens = normalizedQuery.split(/\s+/).filter((token) => token.length >= 3)
+
+  if (tokens.length === 0) {
+    return 0
+  }
+
+  const matchingTokens = tokens.filter((token) => normalizedName.includes(token)).length
+
+  if (matchingTokens === 0) {
+    return 0
+  }
+
+  return (
+    matchingTokens * 10 +
+    (normalizedName.includes(normalizedQuery) ? 20 : 0) +
+    (normalizedName.startsWith(tokens[0]) ? 4 : 0)
+  )
+}
+
+function WineSuggestionButton({
+  wine,
+  label,
+  alreadyInStock,
+  onClick,
+}: {
+  wine: WineType
+  label: string
+  alreadyInStock: boolean
+  onClick: () => void
+}) {
+  const wineName = getWineName(wine)
+  const wineCode = getWineCode(wine)
+  const image = getWineImage(wine)
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.045] p-2 text-left transition duration-200 hover:border-brass/45 hover:bg-white/[0.07]"
+    >
+      <span className="flex h-14 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-white p-1.5">
+        {image ? (
+          <img src={image} alt={wineName} className="h-full w-full object-contain" loading="lazy" />
+        ) : (
+          <Wine size={20} className="text-brass/75" aria-hidden="true" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase text-brass">{label}</span>
+          {alreadyInStock ? (
+            <span className="rounded-full border border-brass/30 bg-brass/10 px-2 py-0.5 text-[10px] font-bold text-brass">
+              Ja no estoque
+            </span>
+          ) : null}
+        </span>
+        <span className="mt-1 line-clamp-2 text-sm font-semibold leading-tight text-ivory">
+          {wineName}
+        </span>
+        <span className="mt-1 block text-xs font-bold text-brass">{wineCode}</span>
+      </span>
+    </button>
+  )
+}
+
 export function StockAddWineModal({
   wines,
   existingCodes,
@@ -137,6 +209,53 @@ export function StockAddWineModal({
       })
       .slice(0, 30)
   }, [catalogQuery, winesWithLinks])
+
+  const nameSuggestions = useMemo(() => {
+    const normalizedName = normalizarTexto(trimmedNome)
+
+    if (normalizedName.length < 3) {
+      return []
+    }
+
+    if (selectedWine && normalizarTexto(getWineName(selectedWine)) === normalizedName) {
+      return []
+    }
+
+    const strongResults = buscarVinhos(winesWithLinks, trimmedNome).vinhos.filter((wine) =>
+      Boolean(getWineCode(wine)),
+    )
+    const seen = new Set<string>()
+    const suggestions: WineType[] = []
+
+    strongResults.forEach((wine) => {
+      const key = getWineSuggestionKey(wine)
+
+      if (!seen.has(key)) {
+        seen.add(key)
+        suggestions.push(wine)
+      }
+    })
+
+    if (suggestions.length < 2) {
+      winesWithLinks
+        .map((wine) => ({
+          wine,
+          score: pontuarSugestaoPorNome(wine, trimmedNome),
+        }))
+        .filter(({ wine, score }) => score > 0 && Boolean(getWineCode(wine)))
+        .sort((a, b) => b.score - a.score)
+        .forEach(({ wine }) => {
+          const key = getWineSuggestionKey(wine)
+
+          if (!seen.has(key) && suggestions.length < 2) {
+            seen.add(key)
+            suggestions.push(wine)
+          }
+        })
+    }
+
+    return suggestions.slice(0, 2)
+  }, [selectedWine, trimmedNome, winesWithLinks])
 
   const fillFromWine = useCallback((wine: WineType, codeOverride?: string) => {
     const wineCode = getWineCode(wine)
@@ -392,12 +511,44 @@ export function StockAddWineModal({
               value={nome}
               onChange={(event) => {
                 setNome(event.target.value)
+                setSelectedWine(undefined)
+                setSearchMessage('')
                 setFormError('')
               }}
               className={inputClass}
               placeholder="Digite o nome do vinho..."
             />
           </label>
+
+          {nameSuggestions.length > 0 ? (
+            <div className="space-y-2 rounded-lg border border-white/10 bg-graphite/35 p-3">
+              <p className="text-xs font-bold uppercase text-stone-400">
+                Vinhos mais parecidos
+              </p>
+              <div className="grid gap-2">
+                {nameSuggestions.map((wine, index) => {
+                  const wineCode = getWineCode(wine)
+
+                  return (
+                    <WineSuggestionButton
+                      key={`${wineCode}-${index}`}
+                      wine={wine}
+                      label={index === 0 ? 'Mais provável' : 'Também parecido'}
+                      alreadyInStock={existingCodeSet.has(wineCode)}
+                      onClick={() => {
+                        fillFromWine(wine)
+                        setSearchMessage(
+                          index === 0
+                            ? 'Vinho mais provavel selecionado.'
+                            : 'Vinho parecido selecionado.',
+                        )
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
