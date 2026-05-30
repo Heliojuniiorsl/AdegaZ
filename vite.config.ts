@@ -4,6 +4,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: process.env.GITHUB_PAGES === 'true' ? '/AdegaZ/' : '/',
   plugins: [react(), mode === 'https' ? basicSsl() : null].filter(Boolean),
   server: {
     host: mode === 'https' ? '0.0.0.0' : '127.0.0.1',
