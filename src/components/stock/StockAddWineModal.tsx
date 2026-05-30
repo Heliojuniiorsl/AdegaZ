@@ -33,6 +33,7 @@ type StockAddWineModalProps = {
 const inputClass =
   'min-h-11 w-full rounded-md border border-white/10 bg-graphite/80 px-3 text-sm text-ivory outline-none transition duration-200 placeholder:text-stone-500 focus:border-brass/60 focus:ring-2 focus:ring-brass/20'
 const EAN_QUERY_DEBOUNCE_MS = 650
+const MANUAL_CODE_DEBOUNCE_MS = 450
 
 function isEanCompleto(value: string) {
   const digits = normalizarEAN(value)
@@ -45,6 +46,41 @@ function isEanCompleto(value: string) {
 
 function getWineCode(wine: WineType) {
   return getCampoSeguro(wine.codigo_produto, { maxLength: 80 }) ?? ''
+}
+
+function getWineIdentifiers(wine: WineType) {
+  return [
+    wine.codigo_produto,
+    wine.ean,
+    wine.gtin,
+    wine.codigo_ean,
+    wine.codigo_barras,
+    wine.codigo_de_barras,
+  ]
+    .map((value) => getCampoSeguro(value, { maxLength: 80 }))
+    .filter((value): value is string => Boolean(value))
+}
+
+function normalizarCodigoComparacao(value: string) {
+  return normalizarTexto(value).replace(/\s+/g, '')
+}
+
+function codigoIgual(input: string, candidate: string) {
+  const inputText = normalizarCodigoComparacao(input)
+  const candidateText = normalizarCodigoComparacao(candidate)
+  const inputDigits = normalizarEAN(input)
+  const candidateDigits = normalizarEAN(candidate)
+
+  return (
+    Boolean(inputText && candidateText && inputText === candidateText) ||
+    Boolean(inputDigits && candidateDigits && inputDigits === candidateDigits)
+  )
+}
+
+function findWineByExactCode(value: string, wines: WineType[]) {
+  return wines.find((wine) =>
+    getWineIdentifiers(wine).some((identifier) => codigoIgual(value, identifier)),
+  )
 }
 
 function getWineName(wine: WineType) {
@@ -62,6 +98,7 @@ export function StockAddWineModal({
   onConfirm,
 }: StockAddWineModalProps) {
   const lastResolvedTypedEanRef = useRef('')
+  const lastResolvedManualCodeRef = useRef('')
   const [isCatalogOpen, setIsCatalogOpen] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState('')
   const [selectedWine, setSelectedWine] = useState<WineType | undefined>()
@@ -207,6 +244,58 @@ export function StockAddWineModal({
     return () => window.clearTimeout(timeoutId)
   }, [catalogQuery, handleEanResult])
 
+  useEffect(() => {
+    const safeCode = trimmedCodigo
+    const normalizedCode = normalizarCodigoComparacao(safeCode)
+
+    if (!safeCode) {
+      lastResolvedManualCodeRef.current = ''
+      return undefined
+    }
+
+    if (
+      selectedWine &&
+      getWineIdentifiers(selectedWine).some((identifier) => codigoIgual(safeCode, identifier))
+    ) {
+      lastResolvedManualCodeRef.current = normalizedCode
+      return undefined
+    }
+
+    if (lastResolvedManualCodeRef.current === normalizedCode) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const exactWine = findWineByExactCode(safeCode, winesWithLinks)
+
+      if (exactWine) {
+        lastResolvedManualCodeRef.current = normalizedCode
+        fillFromWine(exactWine, safeCode)
+        setSearchMessage(
+          existingCodeSet.has(getWineCode(exactWine))
+            ? 'Vinho ja esta no estoque. Confirme para somar a quantidade.'
+            : 'Vinho encontrado pelo codigo informado.',
+        )
+        return
+      }
+
+      if (isEanCompleto(safeCode)) {
+        const ean = normalizarEAN(safeCode)
+        lastResolvedManualCodeRef.current = normalizedCode
+        handleEanResult(ean, 'typed')
+      }
+    }, MANUAL_CODE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    existingCodeSet,
+    fillFromWine,
+    handleEanResult,
+    selectedWine,
+    trimmedCodigo,
+    winesWithLinks,
+  ])
+
   function handleCatalogQueryChange(value: string) {
     setCatalogQuery(value)
     setSearchMessage('')
@@ -288,6 +377,8 @@ export function StockAddWineModal({
               value={codigo}
               onChange={(event) => {
                 setCodigo(event.target.value)
+                setSelectedWine(undefined)
+                setSearchMessage('')
                 setFormError('')
               }}
               className={inputClass}
@@ -337,6 +428,12 @@ export function StockAddWineModal({
           {existingCodeSet.has(trimmedCodigo) ? (
             <p className="rounded-md border border-brass/25 bg-brass/10 px-3 py-2 text-sm text-brass">
               Este codigo ja esta no estoque. Ao adicionar, a quantidade sera somada ao item existente.
+            </p>
+          ) : null}
+
+          {searchMessage && !isCatalogOpen ? (
+            <p className="rounded-md border border-white/10 bg-white/[0.045] px-3 py-2 text-sm text-stone-300">
+              {searchMessage}
             </p>
           ) : null}
 

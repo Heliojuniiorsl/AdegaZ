@@ -20,13 +20,21 @@ type ActionButtonProps = {
   variant?: 'primary' | 'danger' | 'ghost'
 }
 
-function StockImage({ src, alt, size = 'small' }: { src?: string; alt: string; size?: 'small' | 'large' }) {
+function StockImage({
+  src,
+  alt,
+  size = 'small',
+}: {
+  src?: string
+  alt: string
+  size?: 'small' | 'large'
+}) {
   const [hasError, setHasError] = useState(false)
-  const dimensions = size === 'large' ? 'h-28 w-20' : 'h-16 w-12'
+  const dimensions = size === 'large' ? 'h-full min-h-36 w-full' : 'h-16 w-12'
 
   return (
     <div
-      className={`${dimensions} flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-graphite/80`}
+      className={`${dimensions} flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white p-2`}
     >
       {src && !hasError ? (
         <img
@@ -45,9 +53,9 @@ function StockImage({ src, alt, size = 'small' }: { src?: string; alt: string; s
 
 function ActionButton({ label, icon, onClick, variant = 'ghost' }: ActionButtonProps) {
   const classes = {
-    primary: 'border-brass/45 bg-brass/15 text-brass hover:bg-brass hover:text-graphite',
-    danger: 'border-rose-300/35 bg-rose-300/10 text-rose-100 hover:border-rose-200',
-    ghost: 'border-white/10 bg-white/[0.055] text-stone-200 hover:border-brass/35 hover:text-brass',
+    primary: 'border-brass/75 bg-brass/35 text-graphite hover:bg-brass',
+    danger: 'border-rose-500/55 bg-rose-500/15 text-rose-500 hover:border-rose-500 hover:bg-rose-500/25',
+    ghost: 'border-brass/45 bg-brass/10 text-brass hover:border-brass/70 hover:bg-brass/20',
   }
 
   return (
@@ -56,10 +64,19 @@ function ActionButton({ label, icon, onClick, variant = 'ghost' }: ActionButtonP
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`inline-flex h-11 w-full min-w-0 items-center justify-center rounded-md border text-xs font-bold transition duration-200 focus:outline-none focus:ring-2 focus:ring-brass/50 lg:h-10 lg:w-10 lg:flex-none ${classes[variant]}`}
+      className={`inline-flex h-9 w-full min-w-0 items-center justify-center rounded-md border text-xs font-bold transition duration-200 focus:outline-none focus:ring-2 focus:ring-brass/50 lg:h-10 lg:w-10 lg:flex-none ${classes[variant]}`}
     >
       {icon}
     </button>
+  )
+}
+
+function MobileInfoBox({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1.5">
+      <dt className="text-[8px] font-medium uppercase leading-none text-stone-500">{label}</dt>
+      <dd className="mt-1 truncate text-[11px] font-bold leading-tight text-ivory">{value}</dd>
+    </div>
   )
 }
 
@@ -104,7 +121,6 @@ export function StockTable({
                   <td className="px-4 py-4 text-sm font-semibold text-brass">{product.codigo}</td>
                   <td className="px-4 py-4">
                     <p className="line-clamp-2 text-sm font-semibold text-ivory">{product.nome}</p>
-                    <p className="mt-1 line-clamp-1 text-xs text-stone-500">{product.fornecedor}</p>
                   </td>
                   <td className="px-4 py-4 text-sm text-stone-300">{product.tipo}</td>
                   <td className="px-4 py-4 text-sm font-semibold text-ivory">{product.estoqueAtual}</td>
@@ -149,66 +165,62 @@ export function StockTable({
         </table>
       </div>
 
-      <div className="grid gap-4 lg:hidden">
+      <div className="grid gap-3 lg:hidden">
         {products.map((product) => (
             <article
               key={product.id}
-              className="rounded-lg border border-white/10 bg-white/[0.055] p-4 shadow-cellar"
+              className="grid grid-cols-[5.85rem_minmax(0,1fr)] gap-2 rounded-xl border border-white/10 bg-white/[0.055] p-2 shadow-cellar sm:grid-cols-[6.4rem_minmax(0,1fr)]"
             >
-              <div className="flex min-w-0 gap-4">
+              <div className="min-w-0">
                 <StockImage src={product.imagem} alt={product.nome} size="large" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold uppercase text-brass">{product.codigo}</p>
-                  <h3 className="mt-1 line-clamp-3 text-base font-semibold leading-snug text-ivory">
-                    {product.nome}
-                  </h3>
-                  <p className="mt-2 text-sm text-stone-400">{product.tipo}</p>
-                  <dl className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="rounded-md border border-white/10 bg-graphite/40 px-2 py-2">
-                      <dt className="text-[10px] uppercase text-stone-500">Estoque</dt>
-                      <dd className="mt-0.5 text-base font-semibold text-ivory">
-                        {product.estoqueAtual}
-                      </dd>
-                    </div>
-                    <div className="rounded-md border border-white/10 bg-graphite/40 px-2 py-2">
-                      <dt className="text-[10px] uppercase text-stone-500">Local</dt>
-                      <dd className="mt-0.5 line-clamp-1 text-xs font-semibold text-ivory">
-                        {getStockLocationLabel(product.localEstoque)}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                <ActionButton
-                  label="Ver detalhes"
-                  icon={<Eye size={15} aria-hidden="true" />}
-                  onClick={() => onDetails(product)}
-                />
-                <ActionButton
-                  label="Adicionar"
-                  icon={<Plus size={15} aria-hidden="true" />}
-                  onClick={() => onAddUnit(product)}
-                  variant="primary"
-                />
-                <ActionButton
-                  label="Remover"
-                  icon={<Minus size={15} aria-hidden="true" />}
-                  onClick={() => onRemoveUnit(product)}
-                  variant="danger"
-                />
-                <ActionButton
-                  label="Editar"
-                  icon={<Pencil size={15} aria-hidden="true" />}
-                  onClick={() => onEdit(product)}
-                />
-                <ActionButton
-                  label="Excluir"
-                  icon={<Trash2 size={15} aria-hidden="true" />}
-                  onClick={() => onDelete(product)}
-                  variant="danger"
-                />
+              <div className="grid min-w-0 grid-rows-[auto_auto_auto] gap-2">
+                <div className="flex min-h-12 items-center rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2">
+                  <h3 className="line-clamp-2 text-[13px] font-bold leading-tight text-ivory">
+                    {product.nome}
+                  </h3>
+                </div>
+
+                <dl className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.45rem_minmax(0,1fr)] gap-1.5">
+                  <MobileInfoBox label="Código" value={product.codigo} />
+                  <MobileInfoBox label="Estoque" value={product.estoqueAtual} />
+                  <MobileInfoBox
+                    label="Local"
+                    value={getStockLocationLabel(product.localEstoque)}
+                  />
+                </dl>
+
+                <div className="grid grid-cols-5 gap-1.5">
+                  <ActionButton
+                    label="Ver detalhes"
+                    icon={<Eye size={14} aria-hidden="true" />}
+                    onClick={() => onDetails(product)}
+                  />
+                  <ActionButton
+                    label="Adicionar"
+                    icon={<Plus size={15} aria-hidden="true" />}
+                    onClick={() => onAddUnit(product)}
+                    variant="primary"
+                  />
+                  <ActionButton
+                    label="Remover"
+                    icon={<Minus size={15} aria-hidden="true" />}
+                    onClick={() => onRemoveUnit(product)}
+                    variant="danger"
+                  />
+                  <ActionButton
+                    label="Editar"
+                    icon={<Pencil size={14} aria-hidden="true" />}
+                    onClick={() => onEdit(product)}
+                  />
+                  <ActionButton
+                    label="Excluir"
+                    icon={<Trash2 size={14} aria-hidden="true" />}
+                    onClick={() => onDelete(product)}
+                    variant="danger"
+                  />
+                </div>
               </div>
             </article>
           ))}

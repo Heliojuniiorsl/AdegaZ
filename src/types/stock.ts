@@ -5,12 +5,15 @@ export type StockLocation = 'deposito' | 'area-venda'
 export type StockProduct = {
   id: string
   codigo: string
+  ean?: string
   nome: string
   tipo?: string
   imagem?: string
   estoqueAtual: number
   localEstoque?: StockLocation
   fornecedor?: string
+  entradasEstoque: number
+  saidasEstoque: number
   saidasHoje: number
   movimentos30Dias: number
   diasSemMovimento: number

@@ -86,6 +86,21 @@ function InfoBox({ label, value }: { label: string; value?: string }) {
   )
 }
 
+function ProductCodeLine({ product }: { product: StockProduct }) {
+  const showEan = Boolean(product.ean && product.ean !== product.codigo)
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-bold uppercase text-brass">{product.codigo}</span>
+      {showEan ? (
+        <span className="rounded-full border border-brass/25 bg-brass/10 px-2 py-1 text-[11px] font-bold text-brass">
+          EAN {product.ean}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function ProductDetailsModal({
   product,
   onClose,
@@ -100,7 +115,7 @@ function ProductDetailsModal({
       <article className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-white/10 bg-cellar shadow-cellar">
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-cellar/95 p-5 backdrop-blur">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase text-brass">{product.codigo}</p>
+            <ProductCodeLine product={product} />
             <h2 className="mt-1 line-clamp-2 text-xl font-semibold text-ivory">{product.nome}</h2>
           </div>
           <button
@@ -119,10 +134,10 @@ function ProductDetailsModal({
             <ProductStatusBadge status={status} />
             <dl className="grid gap-3 sm:grid-cols-2">
               <InfoBox label="Tipo" value={product.tipo} />
-              <InfoBox label="Fornecedor" value={product.fornecedor} />
               <InfoBox label="Estoque atual" value={`${product.estoqueAtual} unidade(s)`} />
+              <InfoBox label="Entrada" value={`${product.entradasEstoque} unidade(s)`} />
+              <InfoBox label="Saída" value={`${product.saidasEstoque} unidade(s)`} />
               <InfoBox label="Local do estoque" value={getStockLocationLabel(product.localEstoque)} />
-              <InfoBox label="Movimentos em 30 dias" value={String(product.movimentos30Dias)} />
             </dl>
           </div>
         </div>
@@ -349,12 +364,15 @@ export function DespensaPage() {
     const newProduct: StockProduct = {
       id: data.codigo,
       codigo: data.codigo,
+      ean: baseProduct?.ean && baseProduct.ean !== data.codigo ? baseProduct.ean : undefined,
       nome: data.nome,
       tipo: baseProduct?.tipo ?? 'Vinho',
       imagem: baseProduct?.imagem,
       fornecedor: baseProduct?.fornecedor,
       estoqueAtual: data.quantidade,
       localEstoque: data.localEstoque || undefined,
+      entradasEstoque: data.quantidade,
+      saidasEstoque: 0,
       saidasHoje: 0,
       movimentos30Dias: data.quantidade,
       diasSemMovimento: 0,
@@ -370,6 +388,7 @@ export function DespensaPage() {
                 ...item,
                 estoqueAtual: item.estoqueAtual + data.quantidade,
                 localEstoque: data.localEstoque || item.localEstoque,
+                entradasEstoque: item.entradasEstoque + data.quantidade,
                 movimentos30Dias: item.movimentos30Dias + data.quantidade,
                 diasSemMovimento: 0,
               }
@@ -415,6 +434,7 @@ export function DespensaPage() {
           ? {
               ...item,
               estoqueAtual: item.estoqueAtual + 1,
+              entradasEstoque: item.entradasEstoque + 1,
               movimentos30Dias: item.movimentos30Dias + 1,
               diasSemMovimento: 0,
             }
@@ -436,6 +456,7 @@ export function DespensaPage() {
           ? {
               ...item,
               estoqueAtual: item.estoqueAtual - 1,
+              saidasEstoque: item.saidasEstoque + 1,
               saidasHoje: item.saidasHoje + 1,
               movimentos30Dias: item.movimentos30Dias + 1,
               diasSemMovimento: 0,

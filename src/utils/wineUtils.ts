@@ -17,7 +17,13 @@ type SearchDocument = {
   variedadeDaUva: string
 }
 
-export type CategoriaVinho = 'Todos' | 'Tinto' | 'Branco' | 'Espumante' | 'Rosé'
+export type CategoriaVinho =
+  | 'Todos'
+  | 'Tinto'
+  | 'Branco'
+  | 'Espumante'
+  | 'Rosé'
+  | 'Zero'
 export type CategoriaFiltro = Exclude<CategoriaVinho, 'Todos'>
 export type UvaFiltro =
   | 'Cabernet Sauvignon'
@@ -84,6 +90,7 @@ export const CATEGORIAS_RAPIDAS: CategoriaVinho[] = [
   'Branco',
   'Espumante',
   'Rosé',
+  'Zero',
 ]
 
 export const CORES_FILTRO: CategoriaFiltro[] = ['Tinto', 'Branco', 'Rosé', 'Espumante']
@@ -326,7 +333,10 @@ function pontuarCorrespondenciaNome(documento: SearchDocument, termo: string) {
 function detectarCategoriasNoTexto(texto: string) {
   const categorias = new Set<CategoriaFiltro>()
 
-  if (/\b(espumante|cava)\b/.test(texto)) categorias.add('Espumante')
+  if (/\b(espumante|cava|frisante)\b/.test(texto)) categorias.add('Espumante')
+  if (/\b(zero|sem alcool|alcool zero|0\s*[,.-]?\s*0\s*%?|0\s*%)\b/.test(texto)) {
+    categorias.add('Zero')
+  }
   if (/\b(rose|rosado|rosada)\b/.test(texto)) categorias.add('Rosé')
   if (/\btinto\b/.test(texto)) categorias.add('Tinto')
   if (/\bbranco\b/.test(texto)) categorias.add('Branco')
@@ -350,12 +360,28 @@ export function detectarCategoriaVinho(wine: Wine) {
   return detectarCategoriasNoTexto(normalizarTexto(wine.cor_do_vinho))
 }
 
+function normalizarCategoriaFiltro(categoria: CategoriaFiltro | CategoriaVinho) {
+  const categoriaNormalizada = normalizarTexto(categoria).replace(/[^a-z0-9]/g, '')
+
+  if (categoriaNormalizada.startsWith('ros')) {
+    return 'rose'
+  }
+
+  return categoriaNormalizada
+}
+
+function categoriaEstaPresente(categorias: CategoriaFiltro[], categoria: CategoriaFiltro) {
+  const categoriaNormalizada = normalizarCategoriaFiltro(categoria)
+
+  return categorias.some((item) => normalizarCategoriaFiltro(item) === categoriaNormalizada)
+}
+
 export function filtrarPorCategoria(vinhos: Wine[], categoria: CategoriaVinho) {
   if (categoria === 'Todos') {
     return vinhos
   }
 
-  return vinhos.filter((wine) => detectarCategoriaVinho(wine).includes(categoria))
+  return vinhos.filter((wine) => categoriaEstaPresente(detectarCategoriaVinho(wine), categoria))
 }
 
 function textoUva(wine: Wine) {
@@ -467,7 +493,7 @@ function matchCores(wine: Wine, filtros: CategoriaFiltro[]) {
   }
 
   const categorias = detectarCategoriaVinho(wine)
-  return filtros.some((filtro) => categorias.includes(filtro))
+  return filtros.some((filtro) => categoriaEstaPresente(categorias, filtro))
 }
 
 export function aplicarFiltrosAvancados(vinhos: Wine[], filtros: FiltrosAvancados) {
