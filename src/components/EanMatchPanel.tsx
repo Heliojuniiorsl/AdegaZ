@@ -44,16 +44,16 @@ function StatusHeader({ result }: { result: EanResolutionState }) {
   if (result.status === 'carregando') {
     return {
       icon: Loader2,
-      title: 'Consultando EAN...',
-      description: 'Buscando o produto online e preparando a comparação com a adega local.',
+      title: 'Buscando informações do EAN na internet...',
+      description: 'Consultando fontes externas e preparando a comparação com a adega local.',
     }
   }
 
   if (result.status === 'online-sem-produto') {
     return {
       icon: AlertTriangle,
-      title: 'EAN não encontrado online.',
-      description: 'Não encontrei esse código nas fontes externas configuradas.',
+      title: 'EAN não encontrado em bases externas.',
+      description: 'Tente pesquisar pelo nome do vinho.',
     }
   }
 
@@ -82,6 +82,15 @@ function StatusHeader({ result }: { result: EanResolutionState }) {
   }
 
   const melhorScore = result.melhorResultado?.score ?? 0
+
+  if (result.status === 'comparacao' && melhorScore < 70) {
+    return {
+      icon: AlertTriangle,
+      title: 'EAN encontrado na internet.',
+      description:
+        'Encontramos o EAN na internet, mas nenhum vinho cadastrado ficou parecido o suficiente.',
+    }
+  }
 
   return {
     icon: SearchCheck,
@@ -218,14 +227,31 @@ export function EanMatchPanel({ result, onSelectWine, onClear }: EanMatchPanelPr
       {result.status === 'comparacao' ? (
         <>
           <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.045] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brass">
-              Produto encontrado online
-            </p>
-            <p className="mt-2 text-base font-semibold text-ivory">{result.produtoOnline.nome}</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-400">
-              {result.produtoOnline.marca ? <span>{result.produtoOnline.marca}</span> : null}
-              {result.produtoOnline.quantidade ? <span>{result.produtoOnline.quantidade}</span> : null}
-              <span>{result.produtoOnline.fonte}</span>
+            <div className="flex gap-3">
+              {result.produtoOnline.imagem ? (
+                <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-white p-1.5">
+                  <CandidateImage
+                    src={result.produtoOnline.imagem}
+                    alt={result.produtoOnline.nome}
+                  />
+                </span>
+              ) : null}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brass">
+                  Produto encontrado online
+                </p>
+                <p className="mt-2 text-base font-semibold text-ivory">
+                  {result.produtoOnline.nome}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-400">
+                  {result.produtoOnline.marca ? <span>{result.produtoOnline.marca}</span> : null}
+                  {result.produtoOnline.quantidade ? (
+                    <span>{result.produtoOnline.quantidade}</span>
+                  ) : null}
+                  <span>{result.produtoOnline.fonte}</span>
+                  <span>{Math.round(result.produtoOnline.confiancaFonte * 100)}% fonte</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -241,7 +267,7 @@ export function EanMatchPanel({ result, onSelectWine, onClear }: EanMatchPanelPr
               ))
             ) : (
               <p className="rounded-lg border border-white/10 bg-white/[0.045] p-4 text-sm text-stone-300">
-                Nenhum produto com similaridade acima de 70% foi encontrado.
+                Encontramos o EAN na internet, mas nenhum vinho cadastrado ficou parecido o suficiente.
               </p>
             )}
           </div>

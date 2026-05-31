@@ -7,7 +7,29 @@ import {
 } from './wineUtils'
 
 const EAN_LINKS_STORAGE_KEY = 'adegaz:eans-vinculados'
+const EAN_LOOKUP_STORAGE_KEY = 'adegaz:ean-lookup-cache-v1'
 const MIN_EAN_MATCH_SCORE = 70
+const EAN_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14
+const EAN_LOOKUP_TIMEOUT_MS = 6500
+const eanLookupMemoryCache = new Map<string, EanLookupCacheEntry>()
+
+type FonteEANConsulta = () => Promise<ProdutoOnlineEAN[]>
+type EanLookupCacheEntry = {
+  savedAt: number
+  produtos: ProdutoOnlineEAN[]
+}
+
+type ProdutoOnlineInput = {
+  fonte?: unknown
+  ean?: unknown
+  nome?: unknown
+  marca?: unknown
+  imagem?: unknown
+  confiancaFonte?: number
+  quantidade?: unknown
+  categoria?: unknown
+  descricao?: unknown
+}
 
 type OpenFoodFactsProduct = {
   product_name?: string
@@ -17,6 +39,7 @@ type OpenFoodFactsProduct = {
   brands?: string
   quantity?: string
   categories?: string
+  image_url?: string
 }
 
 type OpenFoodFactsResponse = {
@@ -24,16 +47,31 @@ type OpenFoodFactsResponse = {
   product?: OpenFoodFactsProduct
 }
 
+type UpcItemDbResponse = {
+  code?: string
+  total?: number
+  items?: Array<{
+    title?: string
+    brand?: string
+    size?: string
+    description?: string
+    category?: string
+    images?: string[]
+  }>
+}
+
 export type EanLinks = Record<string, string>
 
 export type ProdutoOnlineEAN = {
+  fonte: string
   ean: string
   nome: string
   marca?: string
+  imagem?: string
+  confiancaFonte: number
   quantidade?: string
   categoria?: string
   descricao?: string
-  fonte: string
 }
 
 export type ResultadoSimilarEAN = {
@@ -61,6 +99,7 @@ export type ResultadoBuscaEAN =
       status: 'comparacao'
       ean: string
       produtoOnline: ProdutoOnlineEAN
+      produtosOnline: ProdutoOnlineEAN[]
       nomeNormalizadoOnline: string
       resultadosSimilares: ResultadoSimilarEAN[]
       melhorResultado?: ResultadoSimilarEAN
@@ -91,14 +130,23 @@ const palavrasGenericas = new Set([
   'vh',
   'garrafa',
   'produto',
+  'unidade',
   'bebida',
   'bebidas',
   'alcoolica',
   'alcoolico',
   'adega',
+  'cooperativa',
+  'vinicola',
+  'ltda',
+  'companhia',
+  'cia',
   'un',
   'und',
   'ml',
+  'lt',
+  'litro',
+  'litros',
 ])
 
 const abreviacoes: Record<string, string[]> = {
@@ -116,8 +164,18 @@ export function normalizarEAN(valor: unknown) {
   return String(valor ?? '').replace(/\D/g, '')
 }
 
+export function isPossivelEANCompleto(valor: unknown) {
+  return /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(normalizarEAN(valor))
+}
+
+function isTokenVolume(token: string) {
+  return /^(?:\d+(?:ml|l)|ml|l|lt)$/.test(token)
+}
+
 function tokenizarNomeProduto(valor: unknown) {
   const base = normalizarTexto(valor)
+    .replace(/\bdemi\s*-?\s*sec\b/g, 'demisec')
+    .replace(/\bros[e]?\b/g, 'rose')
     .replace(/(\d+)\s*(ml|l)\b/g, '$1$2')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
@@ -139,15 +197,35 @@ function tokenizarNomeProduto(valor: unknown) {
     tokens.push(token)
   }
 
-  return tokens.filter((token) => token.length > 1 && !palavrasGenericas.has(token))
+  return tokens.filter(
+    (token) => token.length > 1 && !palavrasGenericas.has(token) && !isTokenVolume(token),
+  )
 }
 
 export function normalizarNomeProdutoParaEAN(valor: unknown) {
   return tokenizarNomeProduto(valor).join(' ')
 }
 
-function extrairVolumes(textoNormalizado: string) {
-  return [...textoNormalizado.matchAll(/\b\d+(?:ml|l)\b/g)].map((match) => match[0])
+function normalizarVolume(raw: string) {
+  const [, quantidade, unidade] = raw.match(/^(\d+)(ml|l)$/) ?? []
+
+  if (!quantidade || !unidade) {
+    return raw
+  }
+
+  if (unidade === 'l') {
+    return `${Number(quantidade) * 1000}ml`
+  }
+
+  return `${Number(quantidade)}ml`
+}
+
+function extrairVolumes(valor: unknown) {
+  const texto = normalizarTexto(valor)
+    .replace(/(\d+)\s*(ml|l)\b/g, '$1$2')
+    .replace(/[^a-z0-9]+/g, ' ')
+
+  return [...texto.matchAll(/\b\d+(?:ml|l)\b/g)].map((match) => normalizarVolume(match[0]))
 }
 
 function getCodigosLocais(wine: Wine) {
@@ -175,6 +253,19 @@ function montarTextoComparacaoLocal(wine: Wine) {
     wine.cor_do_vinho,
     getUvaPreferida(wine),
     wine.variedade_da_uva,
+    wine.pais_de_origem,
+    wine.regiao,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function montarTextoComparacaoOnline(produtoOnline: ProdutoOnlineEAN) {
+  return [
+    produtoOnline.nome,
+    produtoOnline.marca,
+    produtoOnline.quantidade,
+    produtoOnline.categoria,
   ]
     .filter(Boolean)
     .join(' ')
@@ -254,10 +345,10 @@ function classificarScore(score: number): ResultadoSimilarEAN['classificacao'] {
 }
 
 function calcularSimilaridadeProduto(produtoOnline: ProdutoOnlineEAN, wine: Wine) {
-  const nomeOnlineNormalizado = normalizarNomeProdutoParaEAN(
-    [produtoOnline.nome, produtoOnline.marca, produtoOnline.quantidade].filter(Boolean).join(' '),
-  )
-  const nomeLocalNormalizado = normalizarNomeProdutoParaEAN(montarTextoComparacaoLocal(wine))
+  const textoOnline = montarTextoComparacaoOnline(produtoOnline)
+  const textoLocal = montarTextoComparacaoLocal(wine)
+  const nomeOnlineNormalizado = normalizarNomeProdutoParaEAN(textoOnline)
+  const nomeLocalNormalizado = normalizarNomeProdutoParaEAN(textoLocal)
   const tokensOnline = nomeOnlineNormalizado.split(' ').filter(Boolean)
   const tokensLocal = nomeLocalNormalizado.split(' ').filter(Boolean)
   const tokensLocalSet = new Set(tokensLocal)
@@ -267,8 +358,8 @@ function calcularSimilaridadeProduto(produtoOnline: ProdutoOnlineEAN, wine: Wine
   const coberturaOnline = tokensOnline.length > 0 ? iguaisOnline / tokensOnline.length : 0
   const coberturaLocal = tokensLocal.length > 0 ? iguaisLocal / Math.min(tokensLocal.length, 10) : 0
   const coberturaFuzzy = mediaSimilaridadeTokens(tokensOnline, tokensLocal)
-  const volumesOnline = extrairVolumes(nomeOnlineNormalizado)
-  const volumesLocal = extrairVolumes(nomeLocalNormalizado)
+  const volumesOnline = extrairVolumes(textoOnline)
+  const volumesLocal = extrairVolumes(textoLocal)
   const volumeIgual =
     volumesOnline.length > 0 &&
     volumesLocal.length > 0 &&
@@ -281,23 +372,45 @@ function calcularSimilaridadeProduto(produtoOnline: ProdutoOnlineEAN, wine: Wine
   const categoriaIgual =
     categoriasOnline.size > 0 &&
     [...categoriasOnline].some((categoria) => categoriasLocal.has(categoria))
-  const marcaOnlineNormalizada = normalizarNomeProdutoParaEAN(produtoOnline.marca)
-  const marcaLocalNormalizada = normalizarNomeProdutoParaEAN(wine.marca)
-  const marcaIgual =
-    Boolean(marcaOnlineNormalizada) &&
-    Boolean(marcaLocalNormalizada) &&
-    mediaSimilaridadeTokens(
-      marcaOnlineNormalizada.split(' ').filter(Boolean),
-      marcaLocalNormalizada.split(' ').filter(Boolean),
-    ) >= 0.72
+  const marcaOnlineTokens = normalizarNomeProdutoParaEAN(produtoOnline.marca)
+    .split(' ')
+    .filter(Boolean)
+  const marcaLocalTokens = normalizarNomeProdutoParaEAN(wine.marca)
+    .split(' ')
+    .filter(Boolean)
+  const marcaScore =
+    marcaOnlineTokens.length > 0 && marcaLocalTokens.length > 0
+      ? mediaSimilaridadeTokens(marcaOnlineTokens, marcaLocalTokens)
+      : 0
+  const marcaIgual = marcaScore >= 0.72
+  const uvaTokens = normalizarNomeProdutoParaEAN(
+    [getUvaPreferida(wine), wine.variedade_da_uva].filter(Boolean).join(' '),
+  )
+    .split(' ')
+    .filter(Boolean)
+  const uvaScore =
+    tokensOnline.length > 0 && uvaTokens.length > 0
+      ? mediaSimilaridadeTokens(uvaTokens, tokensOnline)
+      : 0
+  const origemTokens = normalizarNomeProdutoParaEAN(
+    [wine.pais_de_origem, wine.regiao].filter(Boolean).join(' '),
+  )
+    .split(' ')
+    .filter(Boolean)
+  const origemScore =
+    tokensOnline.length > 0 && origemTokens.length > 0
+      ? mediaSimilaridadeTokens(origemTokens, tokensOnline)
+      : 0
 
   const pontuacao =
-    coberturaOnline * 0.45 +
-    coberturaFuzzy * 0.25 +
-    coberturaLocal * 0.12 +
-    (volumeIgual ? 0.1 : 0) +
-    (categoriaIgual ? 0.05 : 0) +
-    (marcaIgual ? 0.03 : 0)
+    coberturaOnline * 0.35 +
+    coberturaFuzzy * 0.22 +
+    coberturaLocal * 0.1 +
+    marcaScore * 0.18 +
+    (categoriaIgual ? 0.08 : 0) +
+    Math.min(uvaScore, 1) * 0.06 +
+    (volumeIgual ? 0.06 : 0) +
+    Math.min(origemScore, 1) * 0.03
   const score = Math.max(0, Math.min(100, Math.round(pontuacao * 100)))
   const motivos = [
     coberturaOnline >= 0.55 ? 'palavras principais parecidas' : undefined,
@@ -305,6 +418,8 @@ function calcularSimilaridadeProduto(produtoOnline: ProdutoOnlineEAN, wine: Wine
     volumeIgual ? 'volume igual' : undefined,
     categoriaIgual ? 'categoria compatível' : undefined,
     marcaIgual ? 'marca parecida' : undefined,
+    uvaScore >= 0.72 ? 'uva parecida' : undefined,
+    origemScore >= 0.72 ? 'origem parecida' : undefined,
   ].filter((motivo): motivo is string => Boolean(motivo))
 
   return {
@@ -312,6 +427,94 @@ function calcularSimilaridadeProduto(produtoOnline: ProdutoOnlineEAN, wine: Wine
     classificacao: classificarScore(score),
     motivos,
     nomeNormalizadoLocal: nomeLocalNormalizado,
+  }
+}
+
+function limitarConfiancaFonte(value: number | undefined, fallback: number) {
+  const confianca = typeof value === 'number' && Number.isFinite(value) ? value : fallback
+  return Math.max(0, Math.min(1, confianca))
+}
+
+function getImagemSegura(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return value.map(getImagemSegura).find(Boolean)
+  }
+
+  if (isRecord(value)) {
+    return getCampoSeguro(value.url ?? value.contentUrl, { maxLength: 600 })
+  }
+
+  return getCampoSeguro(value, { maxLength: 600 })
+}
+
+function padronizarProdutoOnline(
+  produto: ProdutoOnlineInput,
+  confiancaPadrao: number,
+): ProdutoOnlineEAN | null {
+  const ean = normalizarEAN(produto.ean)
+  const nome = getCampoSeguro(produto.nome, { maxLength: 220 })
+  const fonte = getCampoSeguro(produto.fonte, { maxLength: 80 })
+
+  if (!isPossivelEANCompleto(ean) || !nome || !fonte) {
+    return null
+  }
+
+  return {
+    fonte,
+    ean,
+    nome,
+    marca: getCampoSeguro(produto.marca, { maxLength: 120 }),
+    imagem: getImagemSegura(produto.imagem),
+    confiancaFonte: limitarConfiancaFonte(produto.confiancaFonte, confiancaPadrao),
+    quantidade: getCampoSeguro(produto.quantidade, { maxLength: 80 }),
+    categoria: getCampoSeguro(produto.categoria, { maxLength: 180 }),
+    descricao: getCampoSeguro(produto.descricao, { maxLength: 500 }),
+  } satisfies ProdutoOnlineEAN
+}
+
+async function fetchJsonComTimeout<T>(url: string, init: RequestInit = {}) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), EAN_LOOKUP_TIMEOUT_MS)
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Fonte respondeu com HTTP ${response.status}`)
+    }
+
+    return (await response.json()) as T
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchTextComTimeout(url: string, init: RequestInit = {}) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), EAN_LOOKUP_TIMEOUT_MS)
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'text/html')
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Fonte respondeu com HTTP ${response.status}`)
+    }
+
+    return await response.text()
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -325,19 +528,10 @@ async function consultarEndpointProduto(ean: string, baseUrl: string, fonte: str
     'brands',
     'quantity',
     'categories',
+    'image_url',
   ].join(',')
   const url = `${baseUrl}/api/v2/product/${encodeURIComponent(ean)}.json?fields=${fields}`
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-    },
-  })
-
-  if (!response.ok) {
-    return null
-  }
-
-  const data = (await response.json()) as OpenFoodFactsResponse
+  const data = await fetchJsonComTimeout<OpenFoodFactsResponse>(url)
 
   if (data.status !== 1 || !data.product) {
     return null
@@ -355,14 +549,47 @@ async function consultarEndpointProduto(ean: string, baseUrl: string, fonte: str
     return null
   }
 
-  return {
-    ean,
-    nome,
-    marca: getCampoSeguro(data.product.brands, { maxLength: 120 }),
-    quantidade: getCampoSeguro(data.product.quantity, { maxLength: 80 }),
-    categoria: getCampoSeguro(data.product.categories, { maxLength: 180 }),
-    fonte,
-  } satisfies ProdutoOnlineEAN
+  return padronizarProdutoOnline(
+    {
+      ean,
+      nome,
+      marca: data.product.brands,
+      quantidade: data.product.quantity,
+      categoria: data.product.categories,
+      imagem: data.product.image_url,
+      fonte,
+      confiancaFonte: 0.74,
+    },
+    0.74,
+  )
+}
+
+async function consultarUpcItemDbPorEAN(ean: string) {
+  const url = `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(ean)}`
+  const data = await fetchJsonComTimeout<UpcItemDbResponse>(url)
+
+  if (data.code !== 'OK' || !Array.isArray(data.items)) {
+    return []
+  }
+
+  return data.items
+    .map((item) =>
+      padronizarProdutoOnline(
+        {
+          fonte: 'UPCitemdb',
+          ean,
+          nome: item.title ?? item.description ?? '',
+          marca: item.brand,
+          imagem: item.images,
+          quantidade: item.size,
+          categoria: item.category,
+          descricao: item.description,
+          confiancaFonte: 0.82,
+        },
+        0.82,
+      ),
+    )
+    .filter((produto): produto is ProdutoOnlineEAN => Boolean(produto))
 }
 
 function montarCodigoWireshape(ean: string) {
@@ -447,17 +674,14 @@ function extrairQuantidadeDeTexto(texto: string) {
 }
 
 async function consultarWireshapePorEAN(ean: string) {
-  const response = await fetch(`/api/wireshape/registry/${montarCodigoWireshape(ean)}`, {
-    headers: {
-      Accept: 'text/html',
-    },
-  })
-
-  if (!response.ok) {
-    return null
-  }
-
-  const html = await response.text()
+  const path = `/registry/${montarCodigoWireshape(ean)}`
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  const isStaticHosted = hostname.endsWith('github.io')
+  const url =
+    typeof window !== 'undefined' && !isStaticHosted
+      ? `/api/wireshape${path}`
+      : `https://data.wireshape.com${path}`
+  const html = await fetchTextComTimeout(url)
   const product = extractJsonLdProducts(html)[0]
 
   if (!product) {
@@ -474,46 +698,209 @@ async function consultarWireshapePorEAN(ean: string) {
   const textoCompleto = [nome, descricao].filter(Boolean).join(' ')
   const marca = detectarMarcaConhecida(textoCompleto) ?? getCampoSeguro(getBrandName(product.brand), { maxLength: 120 })
 
-  return {
-    ean,
-    nome,
-    marca,
-    quantidade: extrairQuantidadeDeTexto(nome) ?? getCampoSeguro(product.weight, { maxLength: 80 }),
-    categoria: getCampoSeguro(product.additionalType, { maxLength: 180 }),
-    descricao,
-    fonte: 'Wireshape Data',
-  } satisfies ProdutoOnlineEAN
+  return padronizarProdutoOnline(
+    {
+      ean,
+      nome,
+      marca,
+      imagem: getImagemSegura(product.image),
+      quantidade: extrairQuantidadeDeTexto(nome) ?? getCampoSeguro(product.weight, { maxLength: 80 }),
+      categoria: getCampoSeguro(product.additionalType, { maxLength: 180 }),
+      descricao,
+      fonte: 'Wireshape Data',
+      confiancaFonte: 0.88,
+    },
+    0.88,
+  )
 }
 
-async function buscarProdutoOnlinePorEAN(ean: string) {
-  const endpoints = [
-    {
-      baseUrl: 'https://world.openfoodfacts.org',
-      fonte: 'Open Food Facts',
-    },
-    {
-      baseUrl: 'https://world.openproductsfacts.org',
-      fonte: 'Open Products Facts',
-    },
-  ]
+async function consultarOpenFoodFactsPorEAN(ean: string) {
+  const produto = await consultarEndpointProduto(
+    ean,
+    'https://world.openfoodfacts.org',
+    'Open Food Facts',
+  )
 
-  for (const endpoint of endpoints) {
-    try {
-      const produto = await consultarEndpointProduto(ean, endpoint.baseUrl, endpoint.fonte)
+  return produto ? [produto] : []
+}
 
-      if (produto) {
-        return produto
-      }
-    } catch {
-      // Tenta a proxima fonte antes de desistir.
-    }
+async function consultarOpenProductsFactsPorEAN(ean: string) {
+  const produto = await consultarEndpointProduto(
+    ean,
+    'https://world.openproductsfacts.org',
+    'Open Products Facts',
+  )
+
+  return produto ? [produto] : []
+}
+
+async function consultarWireshapeListaPorEAN(ean: string) {
+  const produto = await consultarWireshapePorEAN(ean)
+  return produto ? [produto] : []
+}
+
+function normalizarResultadoProxy(value: unknown, ean: string) {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  return padronizarProdutoOnline(
+    {
+      fonte: getJsonString(value.fonte) ?? getJsonString(value.source) ?? 'Proxy EAN',
+      ean: getJsonString(value.ean) ?? getJsonString(value.gtin) ?? ean,
+      nome:
+        getJsonString(value.nome) ??
+        getJsonString(value.name) ??
+        getJsonString(value.title) ??
+        '',
+      marca: getJsonString(value.marca) ?? getJsonString(value.brand),
+      imagem: value.imagem ?? value.image ?? value.imageUrl,
+      quantidade: getJsonString(value.quantidade) ?? getJsonString(value.size),
+      categoria: getJsonString(value.categoria) ?? getJsonString(value.category),
+      descricao: getJsonString(value.descricao) ?? getJsonString(value.description),
+      confiancaFonte:
+        typeof value.confiancaFonte === 'number'
+          ? value.confiancaFonte
+          : typeof value.sourceConfidence === 'number'
+            ? value.sourceConfidence
+            : 0.78,
+    },
+    0.78,
+  )
+}
+
+async function consultarProxyConfiguradoPorEAN(ean: string) {
+  const proxyBase = (import.meta.env.VITE_EAN_LOOKUP_PROXY_URL as string | undefined)?.trim()
+
+  if (!proxyBase) {
+    return []
+  }
+
+  const url = `${proxyBase.replace(/\/$/, '')}?ean=${encodeURIComponent(ean)}`
+  const data = await fetchJsonComTimeout<unknown>(url)
+  const lista = Array.isArray(data)
+    ? data
+    : isRecord(data) && Array.isArray(data.resultados)
+      ? data.resultados
+      : isRecord(data) && Array.isArray(data.results)
+        ? data.results
+        : []
+
+  return lista
+    .map((item) => normalizarResultadoProxy(item, ean))
+    .filter((produto): produto is ProdutoOnlineEAN => Boolean(produto))
+}
+
+function getCacheStorage() {
+  if (typeof localStorage === 'undefined') {
+    return {}
   }
 
   try {
-    return await consultarWireshapePorEAN(ean)
+    return JSON.parse(localStorage.getItem(EAN_LOOKUP_STORAGE_KEY) ?? '{}') as Record<
+      string,
+      EanLookupCacheEntry
+    >
   } catch {
-    return null
+    return {}
   }
+}
+
+function getProdutosEmCache(ean: string) {
+  const memoryEntry = eanLookupMemoryCache.get(ean)
+
+  if (memoryEntry && Date.now() - memoryEntry.savedAt <= EAN_LOOKUP_CACHE_TTL_MS) {
+    return memoryEntry.produtos
+  }
+
+  const cache = getCacheStorage()
+  const entry = cache[ean]
+
+  if (!entry || Date.now() - entry.savedAt > EAN_LOOKUP_CACHE_TTL_MS) {
+    return undefined
+  }
+
+  eanLookupMemoryCache.set(ean, entry)
+  return Array.isArray(entry.produtos) ? entry.produtos : undefined
+}
+
+function salvarProdutosEmCache(ean: string, produtos: ProdutoOnlineEAN[]) {
+  eanLookupMemoryCache.set(ean, {
+    savedAt: Date.now(),
+    produtos,
+  })
+
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+
+  try {
+    const cache = getCacheStorage()
+    cache[ean] = {
+      savedAt: Date.now(),
+      produtos,
+    }
+    localStorage.setItem(EAN_LOOKUP_STORAGE_KEY, JSON.stringify(cache))
+  } catch {
+    // Cache e apenas uma otimizacao; se falhar, a busca continua funcionando.
+  }
+}
+
+function deduplicarProdutosOnline(produtos: ProdutoOnlineEAN[]) {
+  const porNome = new Map<string, ProdutoOnlineEAN>()
+
+  for (const produto of produtos) {
+    const chave =
+      normalizarNomeProdutoParaEAN([produto.nome, produto.marca].filter(Boolean).join(' ')) ||
+      `${produto.ean}:${produto.fonte}`
+    const atual = porNome.get(chave)
+
+    if (
+      !atual ||
+      produto.confiancaFonte > atual.confiancaFonte ||
+      (!atual.imagem && produto.imagem)
+    ) {
+      porNome.set(chave, produto)
+    }
+  }
+
+  return [...porNome.values()].sort((a, b) => {
+    if (Boolean(a.imagem) !== Boolean(b.imagem)) {
+      return a.imagem ? -1 : 1
+    }
+
+    return b.confiancaFonte - a.confiancaFonte
+  })
+}
+
+export async function buscarProdutoPorEAN(ean: string) {
+  const eanNormalizado = normalizarEAN(ean)
+
+  if (!isPossivelEANCompleto(eanNormalizado)) {
+    return []
+  }
+
+  const cached = getProdutosEmCache(eanNormalizado)
+
+  if (cached) {
+    return cached
+  }
+
+  const fontes: FonteEANConsulta[] = [
+    () => consultarProxyConfiguradoPorEAN(eanNormalizado),
+    () => consultarUpcItemDbPorEAN(eanNormalizado),
+    () => consultarOpenFoodFactsPorEAN(eanNormalizado),
+    () => consultarOpenProductsFactsPorEAN(eanNormalizado),
+    () => consultarWireshapeListaPorEAN(eanNormalizado),
+  ]
+  const resultados = await Promise.allSettled(fontes.map((consultar) => consultar()))
+  const produtos = resultados.flatMap((resultado) =>
+    resultado.status === 'fulfilled' ? resultado.value : [],
+  )
+  const deduplicados = deduplicarProdutosOnline(produtos)
+
+  salvarProdutosEmCache(eanNormalizado, deduplicados)
+  return deduplicados
 }
 
 export function carregarVinculosEAN(): EanLinks {
@@ -619,10 +1006,11 @@ export async function buscarProdutoPorEANComComparacao(
   }
 
   try {
-    const produtoOnline = await buscarProdutoOnlinePorEAN(eanNormalizado)
-    console.log('Produto encontrado online:', produtoOnline)
+    const produtosOnline = await buscarProdutoPorEAN(eanNormalizado)
+    const primeiroProdutoOnline = produtosOnline[0]
+    console.log('Produto encontrado online:', primeiroProdutoOnline ?? null)
 
-    if (!produtoOnline) {
+    if (!primeiroProdutoOnline) {
       console.log('Nome normalizado online:', '')
       console.log('Comparando com banco local...')
       console.log('Resultados similares:', [])
@@ -636,29 +1024,62 @@ export async function buscarProdutoPorEANComComparacao(
     }
 
     const nomeNormalizadoOnline = normalizarNomeProdutoParaEAN(
-      [produtoOnline.nome, produtoOnline.marca, produtoOnline.quantidade].filter(Boolean).join(' '),
+      montarTextoComparacaoOnline(primeiroProdutoOnline),
     )
     console.log('Nome normalizado online:', nomeNormalizadoOnline)
     console.log('Comparando com banco local...')
 
-    const resultadosSimilares = vinhos
-      .map((wine) => ({
-        wine,
-        ...calcularSimilaridadeProduto(produtoOnline, wine),
-      }))
+    const melhoresPorVinho = new Map<
+      string,
+      ResultadoSimilarEAN & { produtoOnline: ProdutoOnlineEAN }
+    >()
+
+    produtosOnline.forEach((produtoOnline) => {
+      vinhos.forEach((wine, index) => {
+        const resultado = {
+          wine,
+          ...calcularSimilaridadeProduto(produtoOnline, wine),
+          produtoOnline,
+        }
+
+        if (resultado.score < MIN_EAN_MATCH_SCORE) {
+          return
+        }
+
+        const chave = getCodigoProduto(wine) || `${index}:${normalizarTexto(wine.nome_produto)}`
+        const atual = melhoresPorVinho.get(chave)
+
+        if (!atual || resultado.score > atual.score) {
+          melhoresPorVinho.set(chave, resultado)
+        }
+      })
+    })
+
+    const resultadosComProduto = [...melhoresPorVinho.values()]
       .sort((a, b) => b.score - a.score)
-      .filter((resultado) => resultado.score >= MIN_EAN_MATCH_SCORE)
       .slice(0, 12)
+    const resultadosSimilares = resultadosComProduto.map((resultado) => ({
+      wine: resultado.wine,
+      score: resultado.score,
+      classificacao: resultado.classificacao,
+      motivos: resultado.motivos,
+      nomeNormalizadoLocal: resultado.nomeNormalizadoLocal,
+    }))
 
     console.log('Resultados similares:', resultadosSimilares)
 
     const melhorResultado = resultadosSimilares[0]
+    const produtoOnline = resultadosComProduto[0]?.produtoOnline ?? primeiroProdutoOnline
+    const nomeNormalizadoSelecionado = normalizarNomeProdutoParaEAN(
+      montarTextoComparacaoOnline(produtoOnline),
+    )
 
     return {
       status: 'comparacao',
       ean: eanNormalizado,
       produtoOnline,
-      nomeNormalizadoOnline,
+      produtosOnline,
+      nomeNormalizadoOnline: nomeNormalizadoSelecionado,
       resultadosSimilares,
       melhorResultado,
       classificacaoGeral: classificarScore(melhorResultado?.score ?? 0),
