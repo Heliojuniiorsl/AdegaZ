@@ -336,11 +336,8 @@ export function StockAddWineModal({
     scannerError,
     isCameraSupported,
     cameraLabel,
-    cameraCount,
-    canSwitchCamera,
     startScanner,
     stopScanner,
-    switchCamera,
   } = useEanScanner({
     onResult: handleEanResult,
   })
@@ -718,10 +715,7 @@ export function StockAddWineModal({
           error={scannerError}
           isSupported={isCameraSupported}
           cameraLabel={cameraLabel}
-          cameraCount={cameraCount}
-          canSwitchCamera={canSwitchCamera}
           onClose={stopScanner}
-          onSwitchCamera={switchCamera}
         />
       ) : null}
     </div>

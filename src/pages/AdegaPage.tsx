@@ -104,11 +104,8 @@ export function AdegaPage() {
     scannerError,
     isCameraSupported,
     cameraLabel,
-    cameraCount,
-    canSwitchCamera,
     startScanner,
     stopScanner,
-    switchCamera,
   } = useEanScanner({
     onResult: handleEanResult,
   })
@@ -390,10 +387,7 @@ export function AdegaPage() {
           error={scannerError}
           isSupported={isCameraSupported}
           cameraLabel={cameraLabel}
-          cameraCount={cameraCount}
-          canSwitchCamera={canSwitchCamera}
           onClose={stopScanner}
-          onSwitchCamera={switchCamera}
         />
       ) : null}
     </div>

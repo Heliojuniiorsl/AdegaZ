@@ -142,7 +142,6 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
   const [isOpen, setIsOpen] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scannerError, setScannerError] = useState('')
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>()
   const [activeCameraLabel, setActiveCameraLabel] = useState('')
   const isCameraSupported =
@@ -160,7 +159,6 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
       const currentDeviceId = getActiveDeviceId(videoRef.current)
       const bestCamera = cameras[0]
 
-      setCameraDevices(cameras)
       setActiveCameraLabel(
         currentLabel ||
           cameras.find((camera) => camera.deviceId === currentDeviceId)?.label ||
@@ -178,7 +176,7 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
         setSelectedDeviceId(bestCamera.deviceId)
       }
     } catch {
-      setCameraDevices([])
+      setActiveCameraLabel('')
     }
   }, [selectedDeviceId])
 
@@ -199,27 +197,6 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
     setScannerError('')
     setIsOpen(true)
   }, [isCameraSupported])
-
-  const switchCamera = useCallback(() => {
-    if (cameraDevices.length < 2) {
-      return
-    }
-
-    const currentDeviceId = getActiveDeviceId(videoRef.current) ?? selectedDeviceId
-    const currentIndex = currentDeviceId
-      ? cameraDevices.findIndex((camera) => camera.deviceId === currentDeviceId)
-      : -1
-    const nextCamera = cameraDevices[(currentIndex + 1) % cameraDevices.length]
-
-    if (!nextCamera?.deviceId) {
-      return
-    }
-
-    setScannerError('')
-    setIsScanning(false)
-    setSelectedDeviceId(nextCamera.deviceId)
-    setActiveCameraLabel(nextCamera.label)
-  }, [cameraDevices, selectedDeviceId])
 
   useEffect(() => {
     if (!isOpen || !isCameraSupported || !videoRef.current) {
@@ -292,10 +269,7 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
     scannerError,
     isCameraSupported,
     cameraLabel: activeCameraLabel,
-    cameraCount: cameraDevices.length,
-    canSwitchCamera: cameraDevices.length > 1,
     startScanner,
     stopScanner,
-    switchCamera,
   }
 }
