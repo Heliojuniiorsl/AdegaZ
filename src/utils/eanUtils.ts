@@ -518,6 +518,24 @@ async function fetchTextComTimeout(url: string, init: RequestInit = {}) {
   }
 }
 
+async function fetchPrimeiroTextoDisponivel(urls: string[]) {
+  let lastError: unknown
+
+  for (const url of urls) {
+    try {
+      return await fetchTextComTimeout(url)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Nenhuma fonte respondeu.')
+}
+
+function criarUrlProxyCors(url: string) {
+  return `https://api.cors.lol/?url=${encodeURIComponent(url)}`
+}
+
 async function consultarEndpointProduto(ean: string, baseUrl: string, fonte: string) {
   const fields = [
     'code',
@@ -677,11 +695,12 @@ async function consultarWireshapePorEAN(ean: string) {
   const path = `/registry/${montarCodigoWireshape(ean)}`
   const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
   const isStaticHosted = hostname.endsWith('github.io')
-  const url =
+  const wireshapeUrl = `https://data.wireshape.com${path}`
+  const urls =
     typeof window !== 'undefined' && !isStaticHosted
-      ? `/api/wireshape${path}`
-      : `https://data.wireshape.com${path}`
-  const html = await fetchTextComTimeout(url)
+      ? [`/api/wireshape${path}`, wireshapeUrl]
+      : [wireshapeUrl, criarUrlProxyCors(wireshapeUrl)]
+  const html = await fetchPrimeiroTextoDisponivel(urls)
   const product = extractJsonLdProducts(html)[0]
 
   if (!product) {
