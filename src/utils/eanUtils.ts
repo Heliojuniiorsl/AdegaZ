@@ -699,7 +699,7 @@ async function consultarWireshapePorEAN(ean: string) {
   const urls =
     typeof window !== 'undefined' && !isStaticHosted
       ? [`/api/wireshape${path}`, wireshapeUrl]
-      : [wireshapeUrl, criarUrlProxyCors(wireshapeUrl)]
+      : [criarUrlProxyCors(wireshapeUrl), wireshapeUrl]
   const html = await fetchPrimeiroTextoDisponivel(urls)
   const product = extractJsonLdProducts(html)[0]
 
