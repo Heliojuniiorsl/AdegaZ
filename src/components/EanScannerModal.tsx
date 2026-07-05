@@ -1,4 +1,4 @@
-import { Barcode, Camera, X } from 'lucide-react'
+import { Barcode, Camera, RefreshCw, X } from 'lucide-react'
 import type { RefObject } from 'react'
 
 type EanScannerModalProps = {
@@ -7,7 +7,9 @@ type EanScannerModalProps = {
   error: string
   isSupported: boolean
   cameraLabel: string
+  canSwitchCamera?: boolean
   onClose: () => void
+  onSwitchCamera?: () => void
 }
 
 export function EanScannerModal({
@@ -16,7 +18,9 @@ export function EanScannerModal({
   error,
   isSupported,
   cameraLabel,
+  canSwitchCamera = false,
   onClose,
+  onSwitchCamera,
 }: EanScannerModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-3 py-4 backdrop-blur-sm sm:items-center">
@@ -37,6 +41,18 @@ export function EanScannerModal({
             ) : null}
           </div>
           <div className="flex items-center gap-2">
+            {isSupported && canSwitchCamera && onSwitchCamera ? (
+              <button
+                type="button"
+                onClick={onSwitchCamera}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-brass/35 bg-brass/10 px-3 text-sm font-semibold text-brass transition duration-200 hover:bg-brass hover:text-graphite focus:outline-none focus:ring-2 focus:ring-brass/60"
+                aria-label="Trocar câmera"
+                title="Trocar câmera"
+              >
+                <RefreshCw size={17} aria-hidden="true" />
+                <span className="hidden sm:inline">Trocar câmera</span>
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}

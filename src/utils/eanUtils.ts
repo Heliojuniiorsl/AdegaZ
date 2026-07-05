@@ -810,7 +810,11 @@ function getProdutosEmCache(ean: string) {
   const memoryEntry = eanLookupMemoryCache.get(ean)
 
   if (memoryEntry && Date.now() - memoryEntry.savedAt <= EAN_LOOKUP_CACHE_TTL_MS) {
-    return memoryEntry.produtos
+    if (memoryEntry.produtos.length > 0) {
+      return memoryEntry.produtos
+    }
+
+    eanLookupMemoryCache.delete(ean)
   }
 
   const cache = getCacheStorage()
@@ -820,11 +824,39 @@ function getProdutosEmCache(ean: string) {
     return undefined
   }
 
+  if (!Array.isArray(entry.produtos) || entry.produtos.length === 0) {
+    delete cache[ean]
+
+    try {
+      localStorage.setItem(EAN_LOOKUP_STORAGE_KEY, JSON.stringify(cache))
+    } catch {
+      // Cache e apenas uma otimizacao; se falhar, a busca continua funcionando.
+    }
+
+    return undefined
+  }
+
   eanLookupMemoryCache.set(ean, entry)
-  return Array.isArray(entry.produtos) ? entry.produtos : undefined
+  return entry.produtos
 }
 
 function salvarProdutosEmCache(ean: string, produtos: ProdutoOnlineEAN[]) {
+  if (produtos.length === 0) {
+    eanLookupMemoryCache.delete(ean)
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cache = getCacheStorage()
+        delete cache[ean]
+        localStorage.setItem(EAN_LOOKUP_STORAGE_KEY, JSON.stringify(cache))
+      } catch {
+        // Cache e apenas uma otimizacao; se falhar, a busca continua funcionando.
+      }
+    }
+
+    return
+  }
+
   eanLookupMemoryCache.set(ean, {
     savedAt: Date.now(),
     produtos,

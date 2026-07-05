@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { IScannerControls } from '@zxing/browser'
-import { BrowserMultiFormatReader } from '@zxing/browser'
-import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 
 type UseEanScannerOptions = {
   onResult: (ean: string) => void
@@ -14,13 +12,6 @@ type CameraCapabilities = MediaTrackCapabilities & {
 type CameraConstraintSet = MediaTrackConstraintSet & {
   focusMode?: string
 }
-
-const EAN_FORMATS = [
-  BarcodeFormat.EAN_13,
-  BarcodeFormat.EAN_8,
-  BarcodeFormat.UPC_A,
-  BarcodeFormat.UPC_E,
-]
 
 function getCameraErrorMessage(error: unknown) {
   const name = error instanceof DOMException ? error.name : ''
@@ -143,6 +134,7 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
   const [isScanning, setIsScanning] = useState(false)
   const [scannerError, setScannerError] = useState('')
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>()
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
   const [activeCameraLabel, setActiveCameraLabel] = useState('')
   const isCameraSupported =
     typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
@@ -159,6 +151,7 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
       const currentDeviceId = getActiveDeviceId(videoRef.current)
       const bestCamera = cameras[0]
 
+      setCameraDevices(cameras)
       setActiveCameraLabel(
         currentLabel ||
           cameras.find((camera) => camera.deviceId === currentDeviceId)?.label ||
@@ -179,6 +172,21 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
       setActiveCameraLabel('')
     }
   }, [selectedDeviceId])
+
+  const switchCamera = useCallback(() => {
+    if (cameraDevices.length < 2) {
+      return
+    }
+
+    const currentDeviceId = getActiveDeviceId(videoRef.current) ?? selectedDeviceId
+    const currentIndex = cameraDevices.findIndex((camera) => camera.deviceId === currentDeviceId)
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameraDevices.length : 0
+    const nextCamera = cameraDevices[nextIndex]
+
+    setScannerError('')
+    setSelectedDeviceId(nextCamera.deviceId)
+    setActiveCameraLabel(nextCamera.label || `Câmera ${nextIndex + 1}`)
+  }, [cameraDevices, selectedDeviceId])
 
   const stopScanner = useCallback(() => {
     controlsRef.current?.stop()
@@ -204,18 +212,31 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
     }
 
     let cancelled = false
-    const hints = new Map<DecodeHintType, unknown>()
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, EAN_FORMATS)
-    hints.set(DecodeHintType.TRY_HARDER, true)
-    const reader = new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 160,
-      delayBetweenScanSuccess: 500,
-      tryPlayVideoTimeout: 9000,
-    })
 
     async function start() {
       try {
         setIsScanning(true)
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
+          await Promise.all([import('@zxing/browser'), import('@zxing/library')])
+
+        if (cancelled) {
+          return
+        }
+
+        const hints = new Map()
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+        ])
+        hints.set(DecodeHintType.TRY_HARDER, true)
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 160,
+          delayBetweenScanSuccess: 500,
+          tryPlayVideoTimeout: 9000,
+        })
+
         controlsRef.current = await reader.decodeFromConstraints(
           {
             audio: false,
@@ -269,7 +290,9 @@ export function useEanScanner({ onResult }: UseEanScannerOptions) {
     scannerError,
     isCameraSupported,
     cameraLabel: activeCameraLabel,
+    canSwitchCamera: cameraDevices.length > 1,
     startScanner,
     stopScanner,
+    switchCamera,
   }
 }
