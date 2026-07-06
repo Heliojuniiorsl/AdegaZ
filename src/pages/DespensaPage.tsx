@@ -17,6 +17,8 @@ import {
 import { StockFilters } from '../components/stock/StockFilters'
 import { StockTable } from '../components/stock/StockTable'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { UserMenu } from '../components/UserMenu'
+import { useAuth } from '../contexts/useAuth'
 import { useEanScanner } from '../hooks/useEanScanner'
 import { useVoiceSearch } from '../hooks/useVoiceSearch'
 import type { Wine as WineType } from '../types/wine'
@@ -34,6 +36,7 @@ import {
   getStockLocationLabel,
   getStockStatus,
 } from '../utils/stockUtils'
+import { loadUserStockProducts, saveUserStockProducts } from '../utils/userStorage'
 import { getCampoSeguro } from '../utils/wineUtils'
 
 const initialStockProducts = createMockStockProducts()
@@ -212,6 +215,7 @@ function RemoveWineFromListModal({
 }
 
 export function DespensaPage() {
+  const { user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const lastResolvedTypedEanRef = useRef('')
@@ -220,7 +224,9 @@ export function DespensaPage() {
     () => aplicarVinculosEAN(catalogWines, eanLinks),
     [eanLinks],
   )
-  const [products, setProducts] = useState<StockProduct[]>(initialStockProducts)
+  const [products, setProducts] = useState<StockProduct[]>(() =>
+    user ? loadUserStockProducts(user.matricula) ?? initialStockProducts : initialStockProducts,
+  )
   const [filters, setFilters] = useState<StockFiltersState>(emptyFilters)
   const [isAddWineOpen, setIsAddWineOpen] = useState(false)
   const [detailsProduct, setDetailsProduct] = useState<StockProduct | null>(null)
@@ -233,6 +239,14 @@ export function DespensaPage() {
       navigate('/despensa', { replace: true })
     }
   }, [location.pathname, navigate])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    saveUserStockProducts(user.matricula, products)
+  }, [products, user])
 
   const productsInStock = useMemo(
     () => products.filter((product) => product.estoqueAtual > 0),
@@ -499,6 +513,7 @@ export function DespensaPage() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ThemeToggle />
+          <UserMenu />
           <Link
             to="/adega"
             className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-stone-200 transition duration-200 hover:border-brass/45 hover:text-brass sm:min-h-11 sm:px-4 sm:text-sm"
