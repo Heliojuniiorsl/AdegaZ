@@ -74,6 +74,24 @@ export type ProdutoOnlineEAN = {
   descricao?: string
 }
 
+const EAN_LINKS_CONFIRMADOS: EanLinks = {
+  '7804330001736': '1018977',
+}
+
+const produtosEANConfirmados: ProdutoOnlineInput[] = [
+  {
+    fonte: 'Base confirmada AdegaZ',
+    ean: '7804330001736',
+    nome: 'Vinho Tinto Chileno 120 Red Blend 750ml',
+    marca: '120',
+    quantidade: '750ml',
+    categoria: 'Vinho tinto chileno red blend',
+    descricao:
+      'Produto confirmado como Santa Rita 120 Reserva Especial Red Blend 750ml, Chile, Valle Central, Cabernet Franc, Cabernet Sauvignon e Carmenere.',
+    confiancaFonte: 0.97,
+  },
+]
+
 export type ResultadoSimilarEAN = {
   wine: Wine
   score: number
@@ -810,6 +828,13 @@ async function consultarProxyConfiguradoPorEAN(ean: string) {
     .filter((produto): produto is ProdutoOnlineEAN => Boolean(produto))
 }
 
+function consultarBaseConfirmadaPorEAN(ean: string) {
+  return produtosEANConfirmados
+    .filter((produto) => normalizarEAN(produto.ean) === ean)
+    .map((produto) => padronizarProdutoOnline(produto, 0.97))
+    .filter((produto): produto is ProdutoOnlineEAN => Boolean(produto))
+}
+
 function getCacheStorage() {
   if (typeof localStorage === 'undefined') {
     return {}
@@ -938,6 +963,7 @@ export async function buscarProdutoPorEAN(ean: string) {
   }
 
   const fontes: FonteEANConsulta[] = [
+    () => Promise.resolve(consultarBaseConfirmadaPorEAN(eanNormalizado)),
     () => consultarProxyConfiguradoPorEAN(eanNormalizado),
     () => consultarUpcItemDbPorEAN(eanNormalizado),
     () => consultarOpenFoodFactsPorEAN(eanNormalizado),
@@ -1009,7 +1035,7 @@ export function aplicarVinculosEAN(vinhos: Wine[], vinculos: EanLinks) {
 
 export function buscarVinhoPorEANLocal(vinhos: Wine[], ean: string, vinculos: EanLinks) {
   const eanNormalizado = normalizarEAN(ean)
-  const codigoVinculado = vinculos[eanNormalizado]
+  const codigoVinculado = vinculos[eanNormalizado] ?? EAN_LINKS_CONFIRMADOS[eanNormalizado]
 
   if (codigoVinculado) {
     const vinhoVinculado = vinhos.find((wine) => getCodigoProduto(wine) === codigoVinculado)

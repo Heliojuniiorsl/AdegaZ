@@ -12,6 +12,20 @@ const JSON_HEADERS = {
 
 const SOURCE_TIMEOUT_MS = 7000
 
+const PRODUTOS_EAN_CONFIRMADOS = [
+  {
+    fonte: 'Base confirmada AdegaZ',
+    ean: '7804330001736',
+    nome: 'Vinho Tinto Chileno 120 Red Blend 750ml',
+    marca: '120',
+    quantidade: '750ml',
+    categoria: 'Vinho tinto chileno red blend',
+    descricao:
+      'Produto confirmado como Santa Rita 120 Reserva Especial Red Blend 750ml, Chile, Valle Central, Cabernet Franc, Cabernet Sauvignon e Carmenere.',
+    confiancaFonte: 0.97,
+  },
+]
+
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -311,6 +325,13 @@ async function consultarOpenFacts(ean, baseUrl, fonte) {
   ].filter(Boolean)
 }
 
+function consultarBaseConfirmada(ean) {
+  return PRODUTOS_EAN_CONFIRMADOS
+    .filter((produto) => normalizarEAN(produto.ean) === ean)
+    .map((produto) => normalizarProduto(produto, 0.97))
+    .filter(Boolean)
+}
+
 function deduplicarProdutos(produtos) {
   const byKey = new Map()
 
@@ -338,6 +359,7 @@ function deduplicarProdutos(produtos) {
 
 async function buscarProdutoPorEAN(ean) {
   const fontes = [
+    () => Promise.resolve(consultarBaseConfirmada(ean)),
     () => consultarWireshape(ean),
     () => consultarUpcItemDb(ean),
     () => consultarOpenFacts(ean, 'https://world.openfoodfacts.org', 'Open Food Facts'),
@@ -397,7 +419,13 @@ export default {
     const response = jsonResponse({
       ean,
       resultados,
-      fontesTentadas: ['Wireshape Data', 'UPCitemdb', 'Open Food Facts', 'Open Products Facts'],
+      fontesTentadas: [
+        'Base confirmada AdegaZ',
+        'Wireshape Data',
+        'UPCitemdb',
+        'Open Food Facts',
+        'Open Products Facts',
+      ],
     })
 
     ctx?.waitUntil?.(putCachedResponse(request, ean, response))
